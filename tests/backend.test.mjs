@@ -64,3 +64,47 @@ test('configured rate limit can reject bursts',async()=>{
  const env={...ENV,ACEPREP_RATE_LIMIT:{limit:async()=>({success:false})}};
  const res=await chat({request:request('/api/chat',{messages:[{role:'user',content:'Hi'}]}),env});assert.equal(res.status,429);
 });
+
+test('question generation uses Groq strict schema and validates the result',async()=>{
+ const {onRequestPost:questions}=await import('../functions/api/questions.js');
+ const data={jobTitle:'Care Assistant',experience:'I supported residents with meals and mobility.',topics:['safeguarding'],existingQuestions:[],research:[{title:'Official safety guidance',content:'Raise concerns promptly.'}]};
+ await useFetch(async(url,opt)=>{
+  assert.match(url,/api.groq.com/);
+  assert.equal(opt.headers.Authorization,'Bearer server-test-key');
+  const payload=JSON.parse(opt.body);
+  assert.equal(payload.response_format.type,'json_schema');
+  assert.equal(payload.response_format.json_schema.strict,true);
+  assert.equal(payload.model,'openai/gpt-oss-20b');
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({questions:[
+   {category:'Scenario',question:'How would you respond to a safeguarding concern?',answer:'I would make the resident safe, report to the appropriate senior and record facts accurately without conducting my own investigation.',sourceIndex:0},
+   {category:'Role knowledge',question:'How do you support nutrition and hydration?',answer:'I follow the care plan, support choice and independence, monitor intake as required and report any concerns promptly.',sourceIndex:null}
+  ]})}}]});
+ },async()=>{
+  const res=await questions({request:request('/api/questions',data),env:ENV});const b=await res.json();
+  assert.equal(res.status,200);assert.equal(b.questions.length,2);assert.equal(b.questions[0].sourceIndex,0);
+ });
+});
+test('question generation preserves clear errors for truncated, invalid and empty replies',async()=>{
+ const {onRequestPost:questions}=await import('../functions/api/questions.js');
+ const payload={jobTitle:'Microbiologist'};
+ await useFetch(async()=>Response.json({choices:[{finish_reason:'length',message:{content:'{"questions":['}}]}),async()=>{
+  const res=await questions({request:request('/api/questions',payload),env:ENV});assert.equal(res.status,502);assert.match((await res.json()).error,/cut short/);
+ });
+ await useFetch(async()=>Response.json({choices:[{finish_reason:'stop',message:{content:'not json'}}]}),async()=>{
+  const res=await questions({request:request('/api/questions',payload),env:ENV});assert.equal(res.status,502);assert.match((await res.json()).error,/unreadable/);
+ });
+ await useFetch(async()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({questions:[]})}}]}),async()=>{
+  const res=await questions({request:request('/api/questions',payload),env:ENV});assert.equal(res.status,502);
+ });
+ assert.equal((await questions({request:request('/api/questions',{}),env:ENV})).status,400);
+ assert.equal((await questions({request:request('/api/questions',payload,'bad-passcode'),env:ENV})).status,401);
+});
+test('question generation respects optional rate limiter and provider quota',async()=>{
+ const {onRequestPost:questions}=await import('../functions/api/questions.js');
+ const payload={jobTitle:'Care Assistant'};
+ const limited={...ENV,ACEPREP_RATE_LIMIT:{limit:async()=>({success:false})}};
+ assert.equal((await questions({request:request('/api/questions',payload),env:limited})).status,429);
+ await useFetch(async()=>new Response('{}',{status:429}),async()=>{
+  const res=await questions({request:request('/api/questions',payload),env:ENV});assert.equal(res.status,429);assert.match((await res.json()).error,/limit/);
+ });
+});
