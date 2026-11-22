@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#091629" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="description" content="AcePrep — free, private interview practice, role-specific questions, STAR stories and mock interviews." />
+  <title>AcePrep — Your interview confidence studio</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <svg aria-hidden="true" class="svg-sprite" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4.5c2.5-1.5 5.3-1.5 8 0v16c-2.7-1.5-5.5-1.5-8 0zM20 4.5c-2.5-1.5-5.3-1.5-8 0v16c2.7-1.5 5.5-1.5 8 0z"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.8 6.4.9-4.6 4.5 1.1 6.3L12 17.5l-5.7 3 1.1-6.3-4.6-4.5 6.4-.9z"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V4m0 16h16M8 16l4-5 3 2 5-7"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3z"/></symbol>
+    <symbol id="i-cross" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 2 2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"/></symbol>
+    <symbol id="i-briefcase" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 2 9 4v6c0 5-3.5 8-9 10-5.5-2-9-5-9-10V6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM17 9a5 5 0 0 1 0 6M19 6a9 9 0 0 1 0 12"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.8 8.5c0 5.4-8.8 11.2-8.8 11.2S3.2 13.9 3.2 8.5a4.9 4.9 0 0 1 8.8-2.9 4.9 4.9 0 0 1 8.8 2.9z"/></symbol>
+  </svg>
+  <div class="shell" id="shell">
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+      <div class="brand"><div class="brand-mark">A<span>✦</span></div><div class="brand-text"><strong>aceprep<span class="brand-dot">.</span></strong><small>INTERVIEW STUDIO</small></div></div>
+      <div class="nav-caption">YOUR WORKSPACE</div>
+      <nav class="nav-list" id="navigation">
+        <button class="nav-link active" data-view="home"><svg><use href="#i-grid"/></svg><span>Overview</span></button>
+        <button class="nav-link" data-view="agent"><svg><use href="#i-spark"/></svg><span>AI Research Agent</span></button>
+        <button class="nav-link" data-view="coach"><svg><use href="#i-spark"/></svg><span>Interactive coach</span></button>
+        <button class="nav-link" data-view="practice"><svg><use href="#i-mic"/></svg><span>Mock interview</span></button>
+        <button class="nav-link" data-view="questions"><svg><use href="#i-book"/></svg><span>Question bank</span></button>
+        <button class="nav-link" data-view="star"><svg><use href="#i-star"/></svg><span>STAR story builder</span></button>
+        <button class="nav-link" data-view="jobfit"><svg><use href="#i-briefcase"/></svg><span>Job description lab</span></button>
+        <button class="nav-link" data-view="vault"><svg><use href="#i-folder"/></svg><span>My answers</span></button>
+        <button class="nav-link" data-view="progress"><svg><use href="#i-chart"/></svg><span>My progress</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="daily-tip"><div class="tip-icon"><svg><use href="#i-spark"/></svg></div><strong>Small practice, big confidence.</strong><p>Just 10 focused minutes a day makes your answers clearer.</p></div>
+        <div class="local-note"><svg><use href="#i-shield"/></svg> Saved privately in this browser</div>
+      </div>
+    </aside>
+    <div class="main-wrap">
+      <header class="topbar">
+        <div class="top-left"><button class="mobile-menu icon-button" data-action="menu" aria-label="Open navigation"><svg><use href="#i-menu"/></svg></button><span class="crumb">YOUR STUDIO</span><span class="crumb-slash">/</span><span id="page-crumb">Overview</span></div>
+        <div class="top-right"><div class="role-pill"><span class="status-dot"></span><label for="roleSelect">Interview role</label><select id="roleSelect" aria-label="Choose interview role"><option value="general">General / Office</option><option value="care">Care Assistant</option><option value="micro">QC Microbiology</option><option value="nhs">NHS Healthcare</option><option value="tech">Technology</option></select></div><button class="avatar" title="All progress saved locally">YOU</button></div>
+      </header>
+      <main id="app" class="content" tabindex="-1" aria-live="polite"></main>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="coach-content.js" defer></script>
+  <script src="agent.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
