@@ -31,6 +31,13 @@ with sync_playwright() as pw:
   else:value='You explained the safety check clearly. Include what you personally did and how you reported the issue. How would you document it?'
   r.fulfill(status=200,content_type='application/json',body=json.dumps({'text':value}))
  page.route('**/api/chat',mocked_chat)
+ def mocked_questions(r):
+  requests.append(('questions',r.request.headers,r.request.post_data_json))
+  r.fulfill(status=200,content_type='application/json',body=json.dumps({'questions':[
+   {'category':'Safety','question':'How would you respond when a resident falls?','answer':'I would first check the resident for immediate danger, contact a senior colleague for help, follow the care plan and record relevant facts accurately.','sourceIndex':0},
+   {'category':'Teamwork','question':'How do you handle disagreement with a colleague?','answer':'I would stay calm, listen carefully to the colleague, share my perspective respectfully, focus on resident safety and escalate unresolved issues to senior staff.','sourceIndex':None}
+  ]}))
+ page.route('**/api/questions',mocked_questions)
  def mocked_research(r):
   requests.append(('research',r.request.headers,r.request.post_data_json))
   r.fulfill(status=200,content_type='application/json',body=json.dumps({'results':[{'title':'NHS information','url':'https://www.nhs.uk','content':'Safety and reporting requirements in practice','source':'Tavily search','checkedAt':'2026-11-22T00:00:00Z'}],'checkedAt':'2026-11-22T00:00:00Z','warnings':[]}))
