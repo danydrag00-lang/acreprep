@@ -1,0 +1,8 @@
+{
+  "name": "aceprep-interview-coach",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test tests/*.test.mjs" },
+  "description": "AcePrep — Cloudflare Pages interview coach with private beta API protection"
+}

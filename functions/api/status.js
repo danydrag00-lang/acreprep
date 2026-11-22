@@ -1,6 +1,5 @@
-// Cloudflare Pages Function — only tells the browser whether AI is configured.
-export async function onRequestGet({env}) {
- return new Response(JSON.stringify({configured: Boolean(env.GROQ_API_KEY)}),{
-  status:200,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}
- });
+import {reply} from '../_lib/security.js';
+// Configuration only. Never claims that a provider request has succeeded.
+export async function onRequestGet({env}){
+ return reply({configured:Boolean(env.GROQ_API_KEY),privateBeta:Boolean(env.ACEPREP_ACCESS_CODE&&String(env.ACEPREP_ACCESS_CODE).length>=16),providerVerified:false});
 }

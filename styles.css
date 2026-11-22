@@ -58,3 +58,10 @@
 @media(max-width:1100px){.agent-cols{grid-template-columns:1fr}.agent-aside{grid-template-columns:1fr 1fr}.agent-chat{grid-column:span 2}}@media(max-width:680px){.agent-cols,.agent-fields,.agent-aside{grid-template-columns:1fr}.agent-chat{grid-column:auto}.agent-section,.agent-connection,.agent-chat,.agent-note{padding:18px}.agent-page .agent-question{padding:18px}}
 
 .agent-upload{font-size:11px;color:#167d71;font-weight:800;cursor:pointer;text-decoration:underline;text-underline-offset:3px;white-space:nowrap;margin-top:15px}
+
+/* v2: active interviewer practice and accessible state styling */
+.agent-practice-banner { padding:18px; background:linear-gradient(130deg,#effcf9,#fff8eb);border:1px solid #9bded2;border-radius:14px;margin-bottom:14px; }
+.agent-practice-banner h4 {font-size:16px;line-height:1.5;color:#112f40;margin:10px 0;}
+.agent-practice-banner p {font-size:13px;line-height:1.6;color:#415a66;}
+:where(button,select,input,textarea,a):focus-visible{outline:3px solid #0ea5a4!important;outline-offset:3px;}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}}

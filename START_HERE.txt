@@ -1,0 +1,23 @@
+ACEPREP 2.0 — UPDATE YOUR LIVE WEBSITE
+====================================
+GitHub repository: https://github.com/danydrag00-lang/acreprep
+Cloudflare Pages: https://acreprep.pages.dev
+
+1. Unzip this package on your Mac.
+2. In your GitHub repo, upload/replace the files with the contents of this package.
+   KEEP the folders: functions/api and functions/_lib. Do not upload the ZIP itself.
+3. Commit your changes to main; Cloudflare Pages should deploy them automatically.
+4. In Cloudflare → Workers & Pages → acreprep → Settings → Variables and Secrets,
+   add TWO production ENCRYPTED SECRETS:
+      GROQ_API_KEY         = your NEW Groq API key (revoke the exposed old one)
+      ACEPREP_ACCESS_CODE  = your OWN strong 24+ character private beta passcode
+   Do not use the same value for both.
+5. Redeploy after adding secrets. On the live website, open AI Research Agent,
+   enter the BETA PASSCODE (never your Groq API key) and click Unlock AI.
+   If the key is accepted, the app reports "Groq AI connected and key verified."
+
+Test the natural voice, record an answer, generate question packs, start a
+question, obtain feedback and check the saved progress.
+
+The site is still a PRIVATE BETA—not ready for unlimited public client use.
+See README.md for security limits, privacy, and pending PDF/DOCX support.

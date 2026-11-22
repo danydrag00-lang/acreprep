@@ -1,6 +1,6 @@
 'use strict';
 
-// AcePrep is deliberately self-contained: no account, API key, paid service, analytics or server.
+// AcePrep has offline learning guides and optional same-origin Cloudflare AI services. No key appears in browser code.
 const ROLES = {general:'General / Office',care:'Care Assistant',micro:'QC Microbiology',nhs:'NHS Healthcare',tech:'Technology'};
 const ROLE_META = {
   general:{description:'Competency, strengths and motivation',icon:'briefcase'},
@@ -119,7 +119,13 @@ const SKILLS={
 
 const KEY='aceprep-data-v1';
 const defaults=()=>({role:'general',sessions:[],answered:[],stories:[],custom:[],starred:[],jobText:'',jobTitle:'',session:null,coach:{}});
-function loadData(){try{const o=JSON.parse(localStorage.getItem(KEY));if(o && typeof o==='object')return {...defaults(),...o};}catch(e){}return defaults();}
+function normaliseData(o){const base=defaults();if(!o||typeof o!=='object'||Array.isArray(o))return base;
+ const result={...base,...o};for(const k of ['sessions','answered','stories','custom','starred'])if(!Array.isArray(result[k]))result[k]=[];
+ if(!result.coach||typeof result.coach!=='object'||Array.isArray(result.coach))result.coach={};
+ if(result.session&&(!Array.isArray(result.session.ids)||!Array.isArray(result.session.entries)))result.session=null;
+ if(!['general','care','micro','nhs','tech'].includes(result.role))result.role='general';
+ return result;}
+function loadData(){try{return normaliseData(JSON.parse(localStorage.getItem(KEY)))}catch(e){return defaults()}}
 let data=loadData();if(!ROLES[data.role])data.role='general';
 let state={view:'home',search:'',filter:'all',expanded:new Set(),starDraft:{title:'',s:'',t:'',a:'',r:''},jobResults:null};
 let recognition=null, listening=false, voiceBase='';
@@ -150,42 +156,74 @@ function voiceOptions(){
  options+=`<option value="auto" ${preferredVoiceURI==='auto'?'selected':''}>${esc(voices[0]?`Best available · ${voices[0].name}`:'Device default')}</option>`;
  for(const v of voices)options+=`<option value="${esc(v.voiceURI)}" ${preferredVoiceURI===v.voiceURI?'selected':''}>${esc(v.name)} · ${esc(v.lang)}${v.localService?' · installed':''}</option>`;
  options+='</optgroup><optgroup label="Natural Orpheus voices · private server connection">';
- for (const [id,name] of [['hannah','Hannah · woman'],['autumn','Autumn · woman'],['diana','Diana · woman'],['austin','Austin · man'],['daniel','Daniel · man'],['troy','Troy · man']]) options+=`<option value="orpheus:${id}" ${preferredVoiceURI==='orpheus:'+id?'selected':''}>${name} · natural AI</option>`;
+ for (const [id,name] of [['hannah','Hannah · female'],['autumn','Autumn · female'],['diana','Diana · female'],['austin','Austin · man'],['daniel','Daniel · man'],['troy','Troy · man']]) options+=`<option value="orpheus:${id}" ${preferredVoiceURI==='orpheus:'+id?'selected':''}>${name} · natural AI</option>`;
  return options+'</optgroup>';
 }
 function voiceSettingsHTML(){
- return `<div class="voice-panel"><div class="voice-panel-copy"><div class="eyebrow">${ico('sound')} INTERVIEWER VOICE</div><h3>A real voice, without broken model downloads</h3><p><strong>Instant:</strong> choose a voice already installed on your device. <strong>Natural:</strong> choose Hannah, Autumn, Diana, Austin, Daniel or Troy with AcePrep’s private server connection. No Hugging Face, jsDelivr or model download is needed for these voices.</p><p class="micro muted">Orpheus has limited free-tier usage and requires internet. It isn't an unlimited free voice. The voice provider receives the text to speak. You can always turn audio off.</p></div><div class="voice-panel-controls"><label class="field-label" for="voiceSelect">Choose interviewer voice</label><select class="field-select voice-select" id="voiceSelect">${voiceOptions()}</select><div class="voice-test-buttons"><button class="btn btn-teal btn-sm" data-action="preview-voice">${ico('play')} Hear sample</button><button class="btn btn-outline btn-sm" data-action="stop-voice">Stop voice</button><button class="btn btn-outline btn-sm" data-view="agent">AI connection status</button></div><div id="voice-status" class="voice-caption">${preferredVoiceURI.startsWith('orpheus:')?'Natural voice requires a secure AI server connection. See AI Research Agent.':'Device voices are ready without a download. Change voice if this one sounds robotic.'}</div></div></div>`;
+ return `<div class="voice-panel"><div class="voice-panel-copy"><div class="eyebrow">${ico('sound')} INTERVIEWER VOICE</div><h3>Interview voices — choose what works</h3><p><strong>Instant:</strong> choose a voice already installed on your device. <strong>Natural:</strong> choose Hannah, Autumn, Diana, Austin, Daniel or Troy with AcePrep’s private server connection. Orpheus runs through your private Groq server, not through a browser model download. Voice quality and regional accent vary.</p><p class="micro muted">Orpheus has limited free-tier usage and requires internet. It isn't an unlimited free voice. The voice provider receives the text to speak. You can always turn audio off.</p></div><div class="voice-panel-controls"><label class="field-label" for="voiceSelect">Choose interviewer voice</label><select class="field-select voice-select" id="voiceSelect">${voiceOptions()}</select><div class="voice-test-buttons"><button class="btn btn-teal btn-sm" data-action="preview-voice">${ico('play')} Hear sample</button><button class="btn btn-outline btn-sm" data-action="stop-voice">Stop voice</button><button class="btn btn-outline btn-sm" data-view="agent">AI connection status</button></div><div id="voice-status" class="voice-caption">${preferredVoiceURI.startsWith('orpheus:')?'Natural voice requires a secure AI server connection. See AI Research Agent.':'Device voices are ready without a download. Change voice if this one sounds robotic.'}</div></div></div>`;
 }
 function refreshVoiceChoices(){const select=document.getElementById('voiceSelect');if(select)select.innerHTML=voiceOptions()}
-let orpheusAudio=null,orpheusURL='', speechSequence=0;
-function stopSpeaking(){speechSequence++;if(orpheusAudio){orpheusAudio.pause();orpheusAudio.src='';orpheusAudio=null}if(orpheusURL){URL.revokeObjectURL(orpheusURL);orpheusURL=''}if('speechSynthesis'in window){try{speechSynthesis.cancel()}catch(e){}}}
+let orpheusAudio=null,orpheusURL='',speechSequence=0,activeSpeechAbort=null,activeSpeechResolve=null;
+function voiceStatus(value){const el=document.getElementById('voice-status');if(el)el.textContent=value}
+function splitVoiceText(value){
+ const text=String(value||'').replace(/\s+/g,' ').trim(),pieces=[],words=text.split(/\s+/);
+ let chunk='';
+ for(const word of words){
+  // Keep each Groq chunk under its documented 200-character request limit.
+  if(word.length>180){if(chunk){pieces.push(chunk);chunk=''}for(let i=0;i<word.length;i+=180)pieces.push(word.slice(i,i+180));continue}
+  if(chunk&&(chunk.length+1+word.length)>180){pieces.push(chunk);chunk=word}else chunk+=(chunk?' ':'')+word;
+ }
+ if(chunk)pieces.push(chunk);
+ return pieces;
+}
+function stopSpeaking(){
+ speechSequence++;if(activeSpeechAbort){activeSpeechAbort.abort();activeSpeechAbort=null}
+ if(orpheusAudio){orpheusAudio.pause();orpheusAudio.removeAttribute('src');orpheusAudio.load();orpheusAudio=null}
+ if(activeSpeechResolve){activeSpeechResolve();activeSpeechResolve=null}
+ if(orpheusURL){URL.revokeObjectURL(orpheusURL);orpheusURL=''}
+ if('speechSynthesis'in window){try{speechSynthesis.cancel()}catch(_){}}
+ voiceStatus('Audio stopped.');
+}
 async function speakWithChosenVoice(text){
  stopSpeaking();const seq=speechSequence;
  if(preferredVoiceURI.startsWith('orpheus:')){
-  const ready=window.AceAgent?.isAiAvailable();
-  if(!ready){toast('Natural voice needs the secure AI server. See AI Research Agent.');return}
+  if(!window.AceAgent?.isAiAvailable()){toast('Unlock AI in the Research Agent to use Orpheus.');return}
+  const parts=splitVoiceText(text);
+  if(!parts.length)return;
+  if(parts.join('').length>15000){toast('This text is too long to read aloud. Try a shorter response.');return}
+  const controller=new AbortController();activeSpeechAbort=controller;
   try{
-   const parts=String(text).replace(/\s+/g,' ').match(/.{1,160}(?:\s|$)/g)||[String(text).slice(0,160)];
-   for(const chunk of parts.slice(0,6)){
+   for(let i=0;i<parts.length;i++){
     if(seq!==speechSequence)return;
-    const response=await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',cache:'no-store',body:JSON.stringify({input:chunk.trim(),voice:preferredVoiceURI.slice(8)})});
-    if(!response.ok){let reason='HTTP '+response.status;try{const e=await response.json();reason=e.error||reason}catch(_){}throw new Error(reason)}
+    voiceStatus(`Generating natural speech ${i+1} of ${parts.length}…`);
+    const response=await fetch('/api/speech',{method:'POST',headers:{'Content-Type':'application/json',...(window.AceAgent?.authHeaders?.()||{})},credentials:'same-origin',cache:'no-store',signal:controller.signal,body:JSON.stringify({input:parts[i],voice:preferredVoiceURI.slice(8)})});
+    if(!response.ok){let reason=`HTTP ${response.status}`;try{const e=await response.json();reason=e.error||reason}catch(_){}throw new Error(reason)}
     const blob=await response.blob();if(seq!==speechSequence)return;
     orpheusURL=URL.createObjectURL(blob);orpheusAudio=new Audio(orpheusURL);
-    await new Promise((resolve,reject)=>{orpheusAudio.onended=resolve;orpheusAudio.onerror=()=>reject(new Error('Browser could not play the audio'));orpheusAudio.play().catch(reject)});
+    voiceStatus(`Speaking part ${i+1} of ${parts.length}…`);
+    await new Promise((resolve,reject)=>{
+     activeSpeechResolve=resolve;
+     orpheusAudio.onended=resolve;
+     orpheusAudio.onerror=()=>reject(new Error('Browser could not play this audio segment.'));
+     orpheusAudio.play().catch(reject);
+    });
+    activeSpeechResolve=null;
     if(orpheusURL)URL.revokeObjectURL(orpheusURL);orpheusURL='';orpheusAudio=null;
    }
-  }catch(e){if(seq===speechSequence)toast('Orpheus voice unavailable: '+e.message.slice(0,130))}
+   if(seq===speechSequence)voiceStatus('Finished playing the full response.');
+  }catch(e){if(seq===speechSequence&&e.name!=='AbortError'){voiceStatus('Natural voice failed: '+e.message);toast('Natural voice unavailable: '+e.message.slice(0,110))}}
+  finally{if(seq===speechSequence)activeSpeechAbort=null}
   return;
  }
- if(!('speechSynthesis'in window)){toast('System speech is not available in this browser.');return}
+ if(!('speechSynthesis'in window)){toast('No system voices available. Use text practice.');return}
  try{
   const utter=new SpeechSynthesisUtterance(text);const v=currentVoice();
   if(v){utter.voice=v;utter.lang=v.lang}else utter.lang='en-GB';
-  utter.rate=.91;utter.pitch=1.02;utter.volume=.92;
-  utter.onerror=e=>{if(e.error!=='canceled'&&e.error!=='interrupted')toast('Could not play this voice. Try another voice.')};
-  speechSynthesis.speak(utter);
- }catch(e){toast('Could not play audio. Try another voice.')}
+  utter.rate=.94;utter.pitch=1.0;utter.volume=.92;
+  utter.onend=()=>voiceStatus('Device voice finished.');
+  utter.onerror=e=>{if(e.error!=='canceled'&&e.error!=='interrupted')toast('Device voice could not play. Choose another voice.')};
+  voiceStatus('Speaking with device voice…');speechSynthesis.speak(utter);
+ }catch(e){toast('Device speech failed. Choose another voice or use text.')}
 }
 
 const app=document.getElementById('app');
@@ -254,7 +292,7 @@ function coachPage(){
  if(s.phase==='learn'){
   content=`<div class="coach-learning"><span class="pill neutral">Lesson ${index} / ${items.length} · ${esc(item.category)}</span><h2 class="interview-q">${esc(item.text)}</h2><div class="row-between"><span class="small muted">What your answer needs to include</span><button class="btn btn-outline btn-sm" data-action="coach-hear-question">${ico('sound')} Hear the question</button></div><ul class="coach-focus">${focus}</ul>${model}<div class="coach-actions"><button class="btn btn-primary" data-action="coach-practise">${ico('mic')} Let me answer it</button><button class="btn btn-outline" data-action="coach-next">Next lesson ${ico('arrow')}</button></div><p class="micro muted">After every two taught lessons the coach introduces a compulsory practice checkpoint. You can also practise now.</p></div>`;
  } else {
-  const question=s.challenge?`Follow-up: Can you give a specific example, explain exactly what you did, and describe the result?`:item.text;
+  const question=s.challenge?(s.followup||'Can you give a specific example, explain exactly what you did, and describe the result?'):item.text;
   content=`<div class="coach-learning"><span class="pill gold">${s.challenge?'INTERVIEW FOLLOW-UP':'PRACTICE CHECKPOINT'} · ${esc(item.category)}</span><div class="row-between" style="align-items:flex-start"><h2 class="interview-q">${esc(question)}</h2><button class="btn btn-outline btn-sm" data-action="coach-hear-question">${ico('sound')} Hear</button></div><p class="help-text">Speak naturally, or type your answer. Explain what <strong>you</strong> would do, and why.</p><label class="field-label" for="coach-answer">Your answer</label><textarea id="coach-answer" class="textarea" rows="6" placeholder="Take your time. Begin with the main point, then give a clear example…">${esc(s.draft||'')}</textarea><div class="row-between section-spacer"><span class="small muted" id="coach-count">${wordCount(s.draft||'')} words</span><button class="btn btn-outline btn-sm" data-action="dictate" id="dictate-btn">${ico('mic')} Speak your answer</button></div>
   ${s.phase==='feedback'?coachFeedbackHTML(s,item):''}
   <div class="coach-actions">${s.phase==='feedback'?`<button class="btn btn-primary" data-action="coach-retry">Try again with feedback</button><button class="btn btn-outline" data-action="coach-followup">Ask a follow-up question</button><button class="btn btn-teal" data-action="coach-next">Next lesson ${ico('arrow')}</button>`:`<button class="btn btn-primary" data-action="coach-assess">${ico('spark')} Coach my answer</button><button class="btn btn-outline" data-action="coach-show-example">Show example answer</button>`}</div></div>`;
@@ -267,10 +305,10 @@ function coachPage(){
 function coachFeedbackHTML(s,item){
  const f=s.feedback||{score:0},missing=f.missing||[];
  const positive=f.score>=75?'Your answer includes useful, relevant details.':f.score>=45?'You covered some important ideas.':'You started answering, and that is valuable practice.';
- return `<div class="coach-feedback" role="status"><div class="row-between"><div><div class="eyebrow">COACHING FEEDBACK</div><h3>Practice score: ${f.score}/100 <span class="micro muted">(checklist estimate)</span></h3></div><span class="pill neutral">Attempt ${s.attempts}</span></div><p>${esc(positive)}</p><h4>What to improve next</h4><ul>${missing.length?missing.map(x=>`<li>${esc(x)}</li>`).join(''):'<li>Keep your answer concise and make your example specific.</li>'}</ul><div class="coach-confidence">${ico('heart')} ${esc(f.message||'Practising is how you build confidence. One clearer answer at a time.')}</div>${modelAnswerForCoach(item)}</div>`;
+ return `<div class="coach-feedback" role="status"><div class="row-between"><div><div class="eyebrow">COACHING FEEDBACK</div><h3>Practice score: ${f.score}/100 <span class="micro muted">(${f.ai?'AI coaching estimate':'checklist estimate'})</span></h3></div><span class="pill neutral">Attempt ${s.attempts}</span></div><p>${esc(f.aiPositive||positive)}</p><h4>What to improve next</h4><ul>${missing.length?missing.map(x=>`<li>${esc(x)}</li>`).join(''):'<li>Keep your answer concise and make your example specific.</li>'}</ul><div class="coach-confidence">${ico('heart')} ${esc(f.message||'Practising is how you build confidence. One clearer answer at a time.')}</div>${modelAnswerForCoach(item)}</div>`;
 }
 function modelAnswerForCoach(item){return `<details class="coach-details"><summary>Compare with the model answer</summary><p>${esc(item.answer)}</p><ul>${item.focus.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>`}
-function coachAssess(){
+async function coachAssess(){
  const s=coachState(),item=coachLesson(),answer=(document.getElementById('coach-answer')?.value||s.draft||'').trim();
  if(wordCount(answer)<8){toast('Try speaking or writing at least one complete thought first.');return}
  const base=assessAnswer(answer,item),lower=answer.toLowerCase();
@@ -285,13 +323,21 @@ function coachAssess(){
  if(!/(i would|i did|i checked|i reported|i made|i helped|i used|i supported|i explained|i followed|i asked|my role)/i.test(answer))missing.push('Use “I” to explain what you personally did or would do.');
  s.attempts=(s.attempts||0)+1;s.draft=answer;s.phase='feedback';
  s.feedback={score:base.score,missing:missing.slice(0,4),message:base.score<60?'You can redo this answer with the model guide. Improvement is more useful than the number.':'Good work: practise the same idea without reading, at your own pace.'};
+ if(window.AceAgent?.isAiAvailable()){
+  toast('Ace is reading your answer and preparing specific feedback…');
+  const question=s.challenge?(s.followup||item.text):item.text;
+  try{const ai=await window.AceAgent.evaluateAnswer(question,answer,item.focus,item.answer);
+    if(ai){s.feedback.ai=true;s.feedback.aiPositive=ai.strength;s.feedback.missing=ai.improvements;s.feedback.message=ai.encouragement;s.followup=ai.followup;s.feedback.score=ai.score;}
+  }catch(e){s.feedback.message+=' AI feedback unavailable: '+e.message.slice(0,90)+'; showing checklist instead.';}
+ }
+
  data.answered.unshift({uid:'coach-'+Date.now(),role:data.role,category:item.category,question:item.text,answer:answer,score:base.score,createdAt:new Date().toISOString()});
  data.answered=data.answered.slice(0,300);save();render();
 }
 function coachNext(){
  const s=coachState(),items=coachLessons();if(!items.length)return;
  s.completed=Math.max(s.completed||0,s.index+1);s.index=(s.index+1)%items.length;
- s.phase=(s.index%3===2)?'practice':'learn';s.draft='';s.feedback=null;s.attempts=0;s.challenge=false;save();render();
+ s.phase=(s.index%3===2)?'practice':'learn';s.draft='';s.feedback=null;s.attempts=0;s.challenge=false;s.followup='';save();render();
 }
 function coachStartPractice(){const s=coachState();s.phase='practice';s.draft='';s.feedback=null;s.challenge=false;save();render();document.getElementById('coach-answer')?.focus()}
 function coachRetry(followup=false){const s=coachState();s.phase='practice';s.draft='';s.feedback=null;s.challenge=followup;save();render();document.getElementById('coach-answer')?.focus()}
@@ -330,8 +376,14 @@ function assessAnswer(answer,item){const lower=answer.toLowerCase(),words=wordCo
  let tips=[];if(relevance<.67&&item.focus.length)tips.push('Include: '+item.focus.slice(0,2).map(x=>x.charAt(0).toLowerCase()+x.slice(1)).join('; ')+'.');if(!example&&item.type==='behavior')tips.push('Use STAR: situation → task → your action → result.');if(!outcome)tips.push('Finish with a clear result or lesson.');if(words>220)tips.push('Remove repetition to keep your answer concise.');if(words<55)tips.push('Develop your example with two or three additional sentences.');if(!tips.length)tips.push('Try saying the answer aloud naturally, then practise once more without reading it.');
  return {score,checks,tips,words};
 }
-function feedbackPanel(feedback,item){const p=feedback;return `<div class="feedback"><div class="feedback-header"><div><span class="eyebrow">ANSWER REVIEW</span><h3>${scoreLabel(p.score)}</h3><p>This is a practice checklist score, not an AI evaluation or a prediction of interview performance.</p></div><div class="score-circle" style="--score:${p.score}%"><b>${p.score}</b></div></div><div class="feedback-list">${p.checks.map(x=>`<div class="fb-item ${x.ok?'':'bad'}"><b>${x.ok?'✓':'!'}</b><div><strong>${esc(x.label)}</strong><br/>${esc(x.detail)}</div></div>`).join('')}</div><div class="feedback-tips"><b>Try this next:</b> ${esc(p.tips.join(' '))}<div class="question-tools"><button class="btn btn-outline btn-sm" data-action="guide-practice">Show answer guide</button><button class="btn btn-outline btn-sm" data-action="retry-answer">Improve this answer</button></div>${state.expanded.has('current-guide')?`<div class="guide"><strong>What to cover:</strong><ul>${item.focus.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}</div></div>`}
-function evaluateCurrent(){const s=data.session,item=getCurrent(s);const textarea=document.getElementById('practice-answer');s.draft=textarea?.value||s.draft;if(wordCount(s.draft)<3){toast('Write at least a short answer before checking it.');return}stopListening();s.feedback=assessAnswer(s.draft,item);save();render();document.querySelector('.feedback')?.scrollIntoView({behavior:'smooth',block:'nearest'})}
+function feedbackPanel(feedback,item){const p=feedback;return `<div class="feedback"><div class="feedback-header"><div><span class="eyebrow">ANSWER REVIEW</span><h3>${scoreLabel(p.score)}</h3><p>${p.ai?'This is an AI coaching estimate, not a prediction of interview performance.':'This is a practice checklist score, not an AI evaluation or a hiring prediction.'}</p></div><div class="score-circle" style="--score:${p.score}%"><b>${p.score}</b></div></div><div class="feedback-list">${p.checks.map(x=>`<div class="fb-item ${x.ok?'':'bad'}"><b>${x.ok?'✓':'!'}</b><div><strong>${esc(x.label)}</strong><br/>${esc(x.detail)}</div></div>`).join('')}</div><div class="feedback-tips">${p.aiPositive?`<p><b>What you did well:</b> ${esc(p.aiPositive)}</p>`:''}<b>Try this next:</b> ${esc(p.tips.join(' '))}<div class="question-tools"><button class="btn btn-outline btn-sm" data-action="guide-practice">Show answer guide</button><button class="btn btn-outline btn-sm" data-action="retry-answer">Improve this answer</button></div>${state.expanded.has('current-guide')?`<div class="guide"><strong>What to cover:</strong><ul>${item.focus.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}</div></div>`}
+async function evaluateCurrent(){const s=data.session,item=getCurrent(s);const textarea=document.getElementById('practice-answer');s.draft=textarea?.value||s.draft;if(wordCount(s.draft)<3){toast('Write at least a short answer before checking it.');return}stopListening();const answer=s.draft;s.feedback=assessAnswer(answer,item);
+ if(window.AceAgent?.isAiAvailable()){
+  toast('Ace is reviewing your answer…');
+  try{const ai=await window.AceAgent.evaluateAnswer(item.text,answer,item.focus,'');if(ai){s.feedback.ai=true;s.feedback.score=ai.score;s.feedback.aiPositive=ai.strength;s.feedback.tips=ai.improvements;s.feedback.followup=ai.followup;}}
+  catch(e){s.feedback.tips.unshift('AI review unavailable: '+e.message.slice(0,80)+'. Showing checklist instead.');}
+ }
+ save();render();document.querySelector('.feedback')?.scrollIntoView({behavior:'smooth',block:'nearest'})}
 function advance(skip=false){stopSpeaking();const s=data.session;if(!s)return;const item=getCurrent(s);if(!skip&&s.feedback){const entry={id:item.id,question:item.text,category:item.category,answer:s.draft,score:s.feedback.score};s.entries[s.index]=entry;data.answered.unshift({...entry,role:s.role,createdAt:new Date().toISOString(),uid:`a-${Date.now()}-${s.index}`});data.answered=data.answered.slice(0,120)}else if(skip){s.entries[s.index]={id:item.id,question:item.text,category:item.category,answer:'',score:null}}s.index++;s.draft='';s.feedback=null;s.elapsed=0;state.expanded.delete('current-guide');save();render();window.scrollTo({top:0,behavior:'smooth'})}
 function completeSession(){const s=data.session;if(!s||s.finalScore!==undefined)return;const completed=s.entries.filter(x=>typeof x?.score==='number');const avg=completed.length?Math.round(completed.reduce((sum,x)=>sum+x.score,0)/completed.length):0;s.finalScore=avg;s.finishedAt=new Date().toISOString();s.answeredCount=completed.length;data.sessions.unshift({id:s.id,role:s.role,score:avg,answeredCount:completed.length,total:s.ids.length,createdAt:s.finishedAt});data.sessions=data.sessions.slice(0,80);save();}
 function summaryPage(s){if(s.finalScore===undefined)completeSession();const n=s.answeredCount||0;return `<div class="inner-page"><div class="card summary-card"><span class="pill">${ico('spark')} MOCK INTERVIEW COMPLETE</span><h1 class="headline" style="margin:20px 0 6px">You showed up for yourself.</h1><p class="muted small">Every practice session gives you a clearer idea of what to improve.</p><div class="summary-score">${s.finalScore}<span>/100</span></div><p class="small muted">${scoreLabel(s.finalScore)} · ${n} of ${s.ids.length} answers checked</p><div class="content-divider"></div><div class="row" style="justify-content:center;flex-wrap:wrap"><button class="btn btn-primary" data-action="new-mock">Practise again ${ico('arrow')}</button><button class="btn btn-outline" data-view="vault">Review your answers</button><button class="btn btn-outline" data-view="progress">See your progress</button></div></div><div class="card" style="margin-top:17px"><h3>Question-by-question review</h3>${s.entries.map(entry=>`<div class="score-row"><span>${esc(entry.question)}</span><b>${entry.score===null?'Skipped':entry.score+'/100'}</b></div>`).join('')}</div><div class="footer-note">Scores are automated practice indicators, not hiring predictions.</div></div>`}
@@ -355,12 +407,12 @@ function vaultPage(){const answers=data.answered.filter(x=>x.role===data.role),s
 function progressPage(){const all=data.sessions,selected=all.filter(x=>x.role===data.role),avg=overallAvg(),best=all.length?Math.max(...all.map(x=>x.score)):0;const last=all.slice(0,7).reverse();return `<div class="inner-page">${pageIntro('PRACTICE MAKES PROGRESS','Your interview growth','A simple overview of your practice sessions and improvements.',`<button class="btn btn-outline btn-sm" data-action="export">${ico('upload')} Export your progress</button>`)}<div class="metric-grid"><div class="metric"><small>Total mock interviews</small><strong>${all.length}</strong></div><div class="metric"><small>Average score</small><strong>${avg||'—'}</strong></div><div class="metric"><small>Best checklist score</small><strong>${best||'—'}</strong></div><div class="metric"><small>${esc(ROLES[data.role])} mocks</small><strong>${selected.length}</strong></div></div>
  <div class="progress-grid"><div class="card"><div class="eyebrow">LAST 7 MOCKS</div><h3>Practice score trend</h3>${last.length?`<div class="chart-bars">${last.map(s=>`<div class="bar-col"><span style="font-size:10px;font-weight:800">${s.score}</span><div class="bar" style="height:${Math.max(5,s.score)}%"></div><small>${new Date(s.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</small></div>`).join('')}</div>`:`<div class="empty" style="border:0;padding:25px 5px"><p>No mock sessions yet. Your scores will appear here.</p></div>`}<p class="field-help">Scores are heuristic practice feedback, not objective measures of interview ability.</p></div><div class="card"><div class="eyebrow">YOUR NEXT STEP</div><h3>Keep your momentum</h3><p class="help-text">Practise the same question twice. First answer naturally; then improve it using the checklist and a short example.</p><div style="margin:20px 0"><div class="row-between"><span class="small muted">Mock interviews completed</span><strong>${all.length}</strong></div><div class="meter" style="margin-top:9px"><span style="width:${Math.min(100,all.length/10*100)}%"></span></div><p class="micro muted">${Math.min(all.length,10)} of 10 starter practice sessions</p></div><button class="btn btn-primary" data-view="practice">Do another mock ${ico('arrow')}</button></div></div>
  <div class="card section-space"><div class="row-between"><h3>Recent mock interviews</h3><button class="btn btn-outline btn-sm" data-action="export">Back up data</button></div>${all.length?all.slice(0,12).map(s=>`<div class="session-row"><div><strong style="font-size:12px">${esc(ROLES[s.role]||s.role)}</strong><div class="micro muted" style="margin-top:4px">${dateLabel(s.createdAt)} · ${s.answeredCount} of ${s.total} questions answered</div></div><div class="round-score">${s.score}/100</div></div>`).join(''):`<p class="help-text">You haven't finished a mock interview yet.</p>`}</div>
- <div class="card section-space"><h3>Privacy & your data</h3><p class="help-text">Your written answers, STAR stories, and progress are saved in this browser's local storage. Export a backup before clearing browser data or switching devices. There are no accounts, analytics or servers in this app. Microphone dictation, if used, may rely on your browser's speech recognition service.</p><button class="btn btn-danger btn-sm" data-action="reset-all">${ico('trash')} Clear all saved data</button></div></div>`}
+ <div class="card section-space"><h3>Privacy & your data</h3><p class="help-text">Your written answers, STAR stories, and progress are saved in this browser's local storage. Export a backup before clearing browser data or switching devices. There is no AcePrep account or cross-device sync. When you request AI coaching, web research, natural voice or server transcription, relevant content is transmitted to those providers. Browser dictation may also use your browser provider.</p><label class="btn btn-outline btn-sm" style="cursor:pointer">Import a backup<input type="file" id="restore-backup" accept="application/json,.json" hidden></label> <button class="btn btn-danger btn-sm" data-action="reset-all">${ico('trash')} Clear all saved data</button></div></div>`}
 function startDictation(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){toast('Voice dictation is not available in this browser. Please type your answer.');return}if(listening){stopListening();return}try{recognition=new SR();recognition.lang='en-GB';recognition.interimResults=true;recognition.continuous=true;voiceBase=(document.getElementById('coach-answer')||document.getElementById('practice-answer'))?.value.trim()||'';recognition.onresult=(event)=>{let final='',interim='';for(let i=0;i<event.results.length;i++){const txt=event.results[i][0].transcript;if(event.results[i].isFinal)final+=txt+' ';else interim+=txt}const ta=document.getElementById('coach-answer')||document.getElementById('practice-answer');if(ta){ta.value=[voiceBase,(final+interim).trim()].filter(Boolean).join(' ');if(ta.id==='coach-answer'){const s=coachState();s.draft=ta.value;save();const counter=document.getElementById('coach-count');if(counter)counter.textContent=wordCount(ta.value)+' words';}else updateAnswer(ta.value)}};recognition.onerror=(e)=>{toast('Microphone transcription was interrupted: '+e.error);stopListening()};recognition.onend=()=>{listening=false;const btn=document.getElementById('dictate-btn');if(btn)btn.innerHTML=`${ico('mic')} Dictate answer`};recognition.start();listening=true;const btn=document.getElementById('dictate-btn');if(btn)btn.innerHTML=`${ico('mic')} Stop dictation`;toast('Dictation started. Please allow microphone access if asked.')}catch(e){toast('Could not start dictation. Please type your answer.')}}
 function stopListening(){if(recognition){try{recognition.stop()}catch(e){}recognition=null}listening=false}
 function updateAnswer(value){const s=data.session;if(!s)return;s.draft=value;if(s.feedback){s.feedback=null;const feedback=document.querySelector('.feedback');if(feedback)feedback.remove();const next=document.querySelector('[data-action="next-question"]');if(next){next.dataset.action='assess';next.innerHTML=`${ico('spark')} Check my answer`}}const words=wordCount(value),label=document.getElementById('word-count'),fill=document.getElementById('word-fill');if(label)label.textContent=`${words} words`;if(fill)fill.style.width=Math.min(100,words/120*100)+'%';save()}
 async function copyText(text){try{await navigator.clipboard.writeText(text);toast('Copied to clipboard.')}catch(e){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();const ok=document.execCommand('copy');ta.remove();toast(ok?'Copied to clipboard.':'Please select and copy the text manually.')}}
-function downloadBackup(){const blob=new Blob([JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='aceprep-progress-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);toast('Your backup has been exported.')}
+function downloadBackup(){const blob=new Blob([JSON.stringify({format:'aceprep-backup-2',progress:data,agent:window.AceAgent?.exportModel?.()||null,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='aceprep-progress-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);toast('Your backup has been exported.')}
 function timerTick(){const s=data.session;if(s&&s.index<s.ids.length&&state.view==='practice'&&!s.feedback){s.elapsed++;const el=document.getElementById('clock');if(el)el.textContent=timeText(s.elapsed);const timer=document.getElementById('timer');if(timer)timer.classList.toggle('overtime',s.elapsed>=150);if(s.elapsed%10===0)save()}}
 setInterval(timerTick,1000);
 
@@ -411,7 +463,7 @@ document.addEventListener('click',event=>{
   case 'copy-story':{const item=data.stories.find(x=>x.id===id);if(item)copyText(formattedStar(item));break}
   case 'delete-story':if(confirm('Delete this STAR story?')){data.stories=data.stories.filter(x=>x.id!==id);save();render()}break;
   case 'export':downloadBackup();break;
-  case 'reset-all':if(confirm('Permanently delete all your AcePrep progress, saved answers and stories from this browser? Export a backup first if needed.')){data=defaults();state.starDraft={title:'',s:'',t:'',a:'',r:''};state.jobResults=null;save();nav('home');toast('Local AcePrep data cleared.')}break;
+  case 'reset-all':if(confirm('Permanently delete all your AcePrep progress, saved answers and stories from this browser? Export a backup first if needed.')){data=defaults();state.starDraft={title:'',s:'',t:'',a:'',r:''};state.jobResults=null;window.AceAgent?.clearLocal?.();save();nav('home');toast('Local answers and agent profile cleared. Your browser access passcode remains until this tab closes.')}break;
  }
 });
 document.addEventListener('input',event=>{
@@ -422,7 +474,16 @@ document.addEventListener('input',event=>{
  if(target.dataset.star){state.starDraft[target.dataset.star]=target.value;document.getElementById('star-preview-sections').innerHTML=starPreviewSections();return}
  if(target.id==='star-title'){state.starDraft.title=target.value;document.getElementById('star-preview-title').textContent=target.value||'A story worth telling';return}
 });
-document.addEventListener('change',event=>{
+document.addEventListener('change',async event=>{
+ if(event.target.id==='restore-backup'){
+  const file=event.target.files?.[0];if(!file)return;
+  if(file.size>3*1024*1024){toast('Backup too large (maximum 3 MB).');return}
+  try{const parsed=JSON.parse(await file.text());if(parsed.format!=='aceprep-backup-2'||!parsed.progress||!Array.isArray(parsed.progress.sessions))throw new Error('Not an AcePrep v2 backup.');
+   if(!confirm('Import this backup? It will replace current local progress and AI agent notes.'))return;
+   data=normaliseData(parsed.progress);save();window.AceAgent?.importModel?.(parsed.agent);nav('progress');toast('Backup restored in this browser.');
+  }catch(e){toast('Cannot import backup: '+e.message.slice(0,90))}return;
+ }
+
  if(event.target.id==='voiceSelect'){preferredVoiceURI=event.target.value;try{localStorage.setItem('aceprep-voice-v3',preferredVoiceURI)}catch(e){}stopSpeaking();toast('Voice changed. Tap Hear sample to try it.');refreshVoiceChoices();return}
  if(event.target.id==='coachTopic'){const s=coachState();s.index=Number(event.target.value)||0;s.phase='learn';s.draft='';s.feedback=null;s.challenge=false;save();render();return}
  if(event.target.id==='roleSelect'){data.role=event.target.value;state.search='';state.filter='all';save();render();toast('Role changed to '+ROLES[data.role])}

@@ -1,35 +1,87 @@
-# AcePrep — secure, server-connected AI version
+# AcePrep 2.0 — repaired Cloudflare Pages interview coach
 
-**Clients do not enter a Groq API key anywhere in the app.** The same private server key powers the personalised interview coaching and natural Orpheus voices. The question bank and guided practice still work offline.
+This is a **tested replacement package** for the existing GitHub repository: https://github.com/danydrag00-lang/acreprep
 
-## Important security action
+Current live deployment (not automatically updated by this ZIP): https://acreprep.pages.dev
 
-The previous Groq key was pasted in a chat. **Revoke it** at https://console.groq.com/keys and create a new key. This project intentionally contains NO real key. Never put a key in `index.html`, `agent.js`, `app.js`, `README.md`, a public repo, or an ordinary Wrangler `vars` setting. Instead configure it as a Cloudflare encrypted Secret named `GROQ_API_KEY`.
+**Important:** The ZIP contains code only. It does **not** automatically overwrite the existing GitHub repository or live Cloudflare project. The application is still a **private beta**. Do not open the costly AI endpoints to unlimited public use.
 
-## Deploy for free with Cloudflare Pages and GitHub (no command line needed)
+## What is included
 
-1. Create a **private GitHub repository** for AcePrep. Upload all the files and folders in this ZIP, including the root-level `functions/` directory. Do not upload `.dev.vars` or `.env` with a real key. (The included `.dev.vars.example` only has a placeholder.)
-2. Sign in at https://dash.cloudflare.com/ → **Workers & Pages** → create a **Pages** project connected to the GitHub repository. Choose your repository and `main` branch.
-3. For this plain HTML/CSS/JS project use **no build command** and set **Build output directory** to `.` (repository root), if the setup requires a value. Cloudflare Pages serves `index.html`; the root-level `functions/api/*.js` supplies `/api/status`, `/api/chat`, and `/api/speech`.
-4. In your Pages project go to **Settings → Variables and Secrets → Add**, select **Secret / Encrypt**, create a production secret named **GROQ_API_KEY**, and paste your NEW Groq key. **Redeploy** after adding it. (If preview deployments matter, set that environment separately.)
-5. Visit the `*.pages.dev` URL and open **AI Research Agent → Check AI connection**. It should say **AI connected through secure server**. Go to Interactive Coach and test an Orpheus voice (natural voice availability depends on Groq limits).
+- Guided lessons and a large role-based question bank (no short five-question restriction)
+- Individual research profile (job title, employer, vacancy and real CV highlights)
+- Private-server web research using Tavily keyless where accessible, with Wikipedia background fallback and source links
+- Expandable AI-generated question packs; immediate practice button opens an active interview question
+- Conversational coaching targeted to the current question and candidate's answer
+- AI feedback for Guided Coach and Mock Interview; transparent heuristic fallback without AI
+- Natural speech choices via Groq Orpheus, plus locally installed device voices
+- Speech playback queues **all** text chunks, with stop button and clear failure messages
+- Recorded answer transcription via Groq Whisper, with the chance to edit before sending
+- Confidence self-assessment, progress tracking, export/import of both practice and agent information
+- Additional security and privacy controls, accessible focus indicators and reduced-motion support
 
-**Don't use Cloudflare Pages dashboard drag-and-drop ZIP upload for this version:** that method does not compile a `functions/` folder. Use the Git repository integration, or Wrangler CLI. **Do not use GitHub Pages for this secure version:** GitHub Pages is static and cannot run the private API functions.
+## How to update the existing website
 
-For local developer testing, install Node.js and run `npx wrangler pages dev .` in the project folder, with a `.dev.vars` file (copy `.dev.vars.example`, replace the placeholder with your *new* key, and keep that file out of Git). Then visit the local address shown by Wrangler. No real key is included in this downloadable ZIP.
+1. **Back up your current repository** before replacing anything. If you have new interview answers saved in your existing website's browser, export them from **My Progress** first.
+2. Download the AcePrep 2.0 ZIP from ChatGPT and unzip it on your Mac.
+3. Open https://github.com/danydrag00-lang/acreprep → **Add file → Upload files**. Upload the CONTENTS of the extracted folder, preserving the `functions/api/` and `functions/_lib/` directory structure. Replace files of the same name when asked; keep your repository's `main` branch. If your browser cannot upload folders correctly, use **GitHub Desktop** or the equivalent Git client rather than flattening directories.
+4. Commit the changes. Cloudflare Pages connected to that repository should start a new production deployment automatically. Verify in **Cloudflare → Workers & Pages → acreprep → Deployments** that the newest deployment succeeded.
+5. In the Cloudflare **acreprep** project open **Settings → Variables and Secrets** (production environment). Add **encrypted** secrets:
+   - `GROQ_API_KEY`: a **NEW** Groq API key, NOT the previously exposed key.
+   - `ACEPREP_ACCESS_CODE`: a new strong private-beta passcode, **at least 16 characters**, ideally 24+ random characters. This is **not** the Groq key; keep it confidential and only share it with authorised beta testers.
+6. Save the secrets and trigger a new deployment (a new GitHub commit is a reliable way to redeploy).
+7. Open https://acreprep.pages.dev → **AI Research Agent** → enter your private-beta passcode → click **Unlock AI**. The status now calls Groq to verify the configured API key. Do not mistake a configured secret for a successful connection.
+8. Test **Create / expand tailored Q&A**, **Practise this question**, **Coach my answer**, the microphone recording and **Hear sample** with an Orpheus voice. Providers may have varying free-tier limits.
 
-## How it works
+**You do not put any key into `index.html`, `app.js`, or `agent.js`.** Those files are publicly downloadable and must never contain secrets. The private beta passcode is temporarily entered by authorised users in the app; the Groq API key is never shown to them.
 
-- `agent.js` submits AI chat requests to same-origin `/api/chat`, without a browser key. The server calls Groq and returns a generated answer.
-- `app.js` submits Orpheus TTS requests to `/api/speech`, without a browser key. The server returns WAV audio for playing locally.
-- `/api/status` reports whether the server has the secret configured (never its value).
-- Role-topic web research still uses the previously implemented rate-limited keyless Tavily route and Wikipedia fallback. Search snippets must be verified against original sources.
-- CV highlights and job ads are stored in the user's browser, and are only sent to Groq upon requesting AI help. Reduce personal details before submission.
+### Required repository layout
 
-## Limits and making it client-ready
+```
+index.html
+app.js
+agent.js
+coach-content.js
+styles.css
+sw.js
+_headers
+icon.svg
+manifest.webmanifest
+functions/
+  _lib/security.js
+  api/chat.js
+  api/health.js
+  api/research.js
+  api/speech.js
+  api/status.js
+  api/transcribe.js
+```
 
-This is a prototype. The public `/api/chat` and `/api/speech` routes can be called by visitors. **Hiding a key is not sufficient to prevent abuse or excessive account usage.** Before allowing public clients, add authentication, enforce per-user request limits and quotas, set budgets/alerts, provide privacy notices and a data-retention policy, and review Groq's voice and commercial terms. Free-tier availability, rate limits and pricing change. There is no unlimited free public AI voice service. The Orpheus model may not sound British; several voice options are provided.
+**Build setup** for the existing Cloudflare Pages Git integration: framework `None`, build command `exit 0`, output directory `.`. This package does not require an npm build step.
 
-A single local HTML file cannot use these private API routes by itself. For working AI and natural voices, deploy the included site with the Cloudflare Functions. For local-only offline guided practice, use the earlier offline AcePrep file.
+### Optional protective rate-limiting binding
 
-References: https://developers.cloudflare.com/pages/functions/get-started/ · https://developers.cloudflare.com/pages/functions/bindings/ · https://developers.cloudflare.com/pages/get-started/git-integration/ · https://console.groq.com/docs/text-to-speech/orpheus
+The backend supports an optional Cloudflare native rate-limit binding named `ACEPREP_RATE_LIMIT`. If you configure it in your Cloudflare deployment, the code will use it for chat, speech, health, research and transcription requests. Check the latest Cloudflare binding instructions at https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/ and verify the binding in your deployed Pages Functions environment. This is approximate per location, not a global spending cap. Use Groq usage limits and monitoring as well.
+
+## What is still NOT complete
+
+- **This is not a public production SaaS.** The access passcode is a temporary beta gate, not proper multi-user authentication, accounts, per-customer quotas or billing. Those require additional infrastructure and testing.
+- **PDF and DOCX CV parsing is not implemented** in this version. Import `.txt` or `.md`, or paste the text from your CV and job advert. No claims of PDF/DOCX support are made.
+- **Voice is push-to-talk, not live full-duplex human speech.** Recording is transcribed, reviewed and submitted; natural AI replies are played in sequence. Web browser permissions and provider limits vary.
+- **Web search availability is external.** The rate-limited Tavily keyless endpoint may stop working or throttle requests; Wikipedia is background context, not a substitute for official technical guidance. Read the original links and verify critical claims.
+- **No provider calls were exercised using your real secret in the test environment**; automated tests used realistic mocked responses. Production health and voice playback need a post-deploy check.
+- AI feedback scores are coaching estimates, not validated competence measurements. The app cannot predict every interview question or guarantee an interview result.
+- There is no cross-device syncing or full commercial privacy compliance package. Before enrolling clients, create proper privacy notices, a retention policy, age/consent flows where necessary, incident response, user account isolation and budget controls.
+- The prior key shared in conversation should be revoked at https://console.groq.com/keys before any further use.
+
+## Tests
+
+The ZIP includes a native Node.js test suite. Run `npm test` in the extracted folder if you have Node.js. Tests cover backend access control, real provider-status routing with mocked replies, speech, research, transcription, request validation, rate-limit binding behaviour, and credential isolation. A Python Playwright test (`tests/browser_qa.py`) checks desktop/mobile flows using mocked APIs. `npm test` requires no third-party Node packages; browser QA uses Playwright and Chromium.
+
+**Latest local result:** 8/8 Node backend tests passed; scripted desktop/mobile interaction checks passed. Full live Groq/WAV behaviour is **not** verified in this isolated test environment.
+
+## Data handling
+
+Interview notes, questions and progress are saved in the current browser (local storage). The beta passcode is stored in the current tab's session storage. Research sends role/employer/topic queries to external search providers via the server; requesting AI coaching sends relevant profile, vacancy and answer content to Groq; recording sends temporary audio to Groq transcription. No real API keys are present in the downloaded files. The export feature may include sensitive CV information—keep backups secure.
+
+See `RELEASE_NOTES.md` for a detailed checklist of improvements, verification and remaining limitations.
