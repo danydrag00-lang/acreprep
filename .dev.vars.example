@@ -1,0 +1,5 @@
+# Example only. Copy to .dev.vars for local testing.
+# Never commit .dev.vars or real API credentials.
+GROQ_API_KEY="PASTE_YOUR_NEW_ROTATED_KEY_HERE"
+# Private beta code, minimum 16 characters; configure as encrypted secret on Cloudflare Pages.
+ACEPREP_ACCESS_CODE="CHOOSE_A_LONG_RANDOM_TEST_PASSPHRASE"
