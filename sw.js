@@ -1,13 +1,10 @@
-const CACHE='aceprep-v8-fixed';
-const ASSETS=['/','/index.html','/styles.css','/app.js','/coach-content.js','/agent.js','/icon.svg','/manifest.webmanifest'];
-self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
-self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('aceprep-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
-self.addEventListener('fetch',e=>{
- const url=new URL(e.request.url);
- if(e.request.method!=='GET'||url.origin!==location.origin||url.pathname.startsWith('/api/'))return;
- if(!ASSETS.includes(url.pathname))return;
- e.respondWith(fetch(e.request).then(response=>{
-   if(response.ok){const copy=response.clone();e.waitUntil(caches.open(CACHE).then(c=>c.put(e.request,copy)));}
-   return response;
- }).catch(()=>caches.match(e.request)));
-});
+// AcePrep 2.0.2: remove stale offline service worker and its old script caches.
+// Saved interview answers and progress remain untouched in localStorage.
+self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
+self.addEventListener('activate', event => event.waitUntil((async () => {
+  const keys = await caches.keys();
+  await Promise.all(keys.filter(key => key.startsWith('aceprep-')).map(key => caches.delete(key)));
+  await self.registration.unregister();
+  const clients = await self.clients.matchAll({type: 'window'});
+  await Promise.all(clients.map(client => client.navigate(client.url).catch(() => {})));
+})()));

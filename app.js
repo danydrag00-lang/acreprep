@@ -491,7 +491,15 @@ document.addEventListener('change',async event=>{
 });
 document.addEventListener('keydown',event=>{if(event.key==='Escape')document.getElementById('shell').classList.remove('menu-open')});
 if('speechSynthesis' in window){if(speechSynthesis.addEventListener)speechSynthesis.addEventListener('voiceschanged',refreshVoiceChoices);else speechSynthesis.onvoiceschanged=refreshVoiceChoices;}
-if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
+// Stop previous offline asset caching; saved study data in localStorage is unchanged.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.getRegistrations().then(registrations =>
+    Promise.all(registrations.filter(reg => new URL(reg.scope).origin === location.origin).map(reg => reg.unregister()))
+  ).catch(() => {});
+  if ('caches' in window) caches.keys().then(keys =>
+    Promise.all(keys.filter(key => key.startsWith('aceprep-')).map(key => caches.delete(key)))
+  ).catch(() => {});
+}
 render();refreshVoiceChoices();
 // Probe the same-origin backend on startup so Orpheus voices also work before visiting the Agent page.
 window.AceAgent?.checkBackend();
