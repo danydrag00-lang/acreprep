@@ -3,7 +3,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from functools import partial
 from threading import Thread
 from playwright.sync_api import sync_playwright
-import io,wave,json
+import io,wave,json,re
 ROOT=Path(__file__).resolve().parents[1]
 server=ThreadingHTTPServer(('127.0.0.1',0),partial(SimpleHTTPRequestHandler,directory=str(ROOT)))
 Thread(target=server.serve_forever,daemon=True).start()
@@ -48,9 +48,9 @@ with sync_playwright() as pw:
  page.route('**/api/speech',mocked_speech)
  page.route('**/api/transcribe',lambda r:r.fulfill(status=200,content_type='application/json',body=json.dumps({'text':'I would reassure the resident and report concerns promptly.'})))
  html=(ROOT/'index.html').read_text().replace('<head>','<head><base href="https://aceprep.test/">')
- html=html.replace('<link rel="stylesheet" href="styles.css" />','<style>'+ (ROOT/'styles.css').read_text() + '</style>')
+ html=re.sub(r'<link rel="stylesheet" href="styles\.css(?:\?[^\"]+)?" />',lambda _: '<style>'+ (ROOT/'styles.css').read_text() + '</style>', html)
  for nm in ['coach-content.js','agent.js','app.js']:
-  html=html.replace('<script src="'+nm+'" defer></script>','<script>'+ (ROOT/nm).read_text() + '</script>')
+  html=re.sub(r'<script src="'+re.escape(nm)+r'(?:\?[^\"]+)?" defer></script>',lambda _: '<script>'+ (ROOT/nm).read_text() + '</script>', html)
  page.set_content(html,wait_until='load')
  page.locator('.nav-link[data-view="agent"]').click()
  page.locator('#agent-access-code').fill('beta-test-secret-1234567')
